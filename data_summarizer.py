@@ -5,54 +5,53 @@ import json
 from datetime import datetime
 
 class ArgoProfileSummarizer:
-    def __init__(self, csv_folder="csv_data"):
+    def __init__(self, csv_folder="parquets"):
         self.csv_folder = Path(csv_folder)
         self.summaries = []
         
         # Geographic regions for semantic understanding
         self.regions = {
-            'equatorial': {'lat_range': (-5, 5), 'description': 'near the equator'},
-            'tropical': {'lat_range': (-23.5, 23.5), 'description': 'in tropical waters'},
-            'subtropical_north': {'lat_range': (23.5, 35), 'description': 'in northern subtropical waters'},
-            'subtropical_south': {'lat_range': (-35, -23.5), 'description': 'in southern subtropical waters'},
-            'temperate_north': {'lat_range': (35, 60), 'description': 'in northern temperate waters'},
-            'temperate_south': {'lat_range': (-60, -35), 'description': 'in southern temperate waters'},
-            'polar_north': {'lat_range': (60, 90), 'description': 'in northern polar waters'},
-            'polar_south': {'lat_range': (-90, -60), 'description': 'in southern polar waters'},
-            'arctic': {'lat_range': (66.5, 90), 'description': 'in Arctic waters'},
-            'antarctic': {'lat_range': (-90, -66.5), 'description': 'in Antarctic waters'}
+            'equatorial': {'lat_range': (-5, 5), 'keywords': ['equatorial', 'equator', 'tropical convergence']},
+            'tropical': {'lat_range': (-23.5, 23.5), 'keywords': ['tropical', 'warm waters', 'low latitude']},
+            'subtropical_north': {'lat_range': (23.5, 35), 'keywords': ['subtropical', 'northern subtropical', 'mid-latitude']},
+            'subtropical_south': {'lat_range': (-35, -23.5), 'keywords': ['subtropical', 'southern subtropical', 'mid-latitude']},
+            'temperate_north': {'lat_range': (35, 60), 'keywords': ['temperate', 'northern temperate', 'mid-latitude']},
+            'temperate_south': {'lat_range': (-60, -35), 'keywords': ['temperate', 'southern temperate', 'mid-latitude']},
+            'polar_north': {'lat_range': (60, 90), 'keywords': ['polar', 'arctic', 'high latitude', 'cold']},
+            'polar_south': {'lat_range': (-90, -60), 'keywords': ['polar', 'antarctic', 'high latitude', 'cold']},
+            'arctic': {'lat_range': (66.5, 90), 'keywords': ['arctic', 'polar', 'ice-covered', 'extremely cold']},
+            'antarctic': {'lat_range': (-90, -66.5), 'keywords': ['antarctic', 'polar', 'ice-covered', 'extremely cold']}
         }
         
-        # Ocean basins (simplified longitude-based)
+        # Ocean basins with keywords
         self.oceans = {
-            'atlantic': {'lon_range': [(-67.5, 20)], 'description': 'Atlantic Ocean'},
-            'pacific': {'lon_range': [(-180, -67.5), (140, 180)], 'description': 'Pacific Ocean'},
-            'indian': {'lon_range': [(20, 140)], 'description': 'Indian Ocean'},
-            'southern': {'description': 'Southern Ocean'}  # Will be determined by latitude < -60
+            'atlantic': {'lon_range': [(-67.5, 20)], 'keywords': ['Atlantic', 'Atlantic Ocean']},
+            'pacific': {'lon_range': [(-180, -67.5), (140, 180)], 'keywords': ['Pacific', 'Pacific Ocean']},
+            'indian': {'lon_range': [(20, 140)], 'keywords': ['Indian', 'Indian Ocean']},
+            'southern': {'keywords': ['Southern Ocean', 'Antarctic Ocean']}
         }
         
-        # Water mass characteristics
+        # Enhanced water characteristics with search-friendly terms
         self.water_characteristics = {
-            'surface': {'depth_range': (0, 50), 'description': 'surface waters'},
-            'subsurface': {'depth_range': (50, 200), 'description': 'subsurface waters'},
-            'intermediate': {'depth_range': (200, 1000), 'description': 'intermediate depth waters'},
-            'deep': {'depth_range': (1000, 3000), 'description': 'deep waters'},
-            'abyssal': {'depth_range': (3000, 6000), 'description': 'abyssal waters'},
-            'very_cold': {'temp_range': (-2, 4), 'description': 'very cold water'},
-            'cold': {'temp_range': (4, 10), 'description': 'cold water'},
-            'temperate': {'temp_range': (10, 20), 'description': 'temperate water'},
-            'warm': {'temp_range': (20, 26), 'description': 'warm water'},
-            'very_warm': {'temp_range': (26, 35), 'description': 'very warm water'},
-            'fresh': {'salinity_range': (30, 34), 'description': 'relatively fresh water'},
-            'normal_salinity': {'salinity_range': (34, 35), 'description': 'normal salinity water'},
-            'saline': {'salinity_range': (35, 37), 'description': 'saline water'},
-            'hypersaline': {'salinity_range': (37, 42), 'description': 'hypersaline water'}
+            'surface': {'depth_range': (0, 50), 'keywords': ['surface', 'shallow', 'epipelagic']},
+            'subsurface': {'depth_range': (50, 200), 'keywords': ['subsurface', 'upper ocean']},
+            'intermediate': {'depth_range': (200, 1000), 'keywords': ['intermediate', 'mesopelagic', 'twilight zone']},
+            'deep': {'depth_range': (1000, 3000), 'keywords': ['deep', 'bathypelagic', 'deep water']},
+            'abyssal': {'depth_range': (3000, 6000), 'keywords': ['abyssal', 'deep ocean', 'ocean floor']},
+            'very_cold': {'temp_range': (-2, 4), 'keywords': ['very cold', 'freezing', 'ice-cold', 'polar water']},
+            'cold': {'temp_range': (4, 10), 'keywords': ['cold', 'cool water']},
+            'moderate': {'temp_range': (10, 20), 'keywords': ['moderate temperature', 'temperate water']},
+            'warm': {'temp_range': (20, 26), 'keywords': ['warm', 'tropical water']},
+            'very_warm': {'temp_range': (26, 35), 'keywords': ['very warm', 'hot', 'tropical surface water']},
+            'low_salinity': {'salinity_range': (30, 34), 'keywords': ['low salinity', 'fresh', 'diluted']},
+            'normal_salinity': {'salinity_range': (34, 35.5), 'keywords': ['normal salinity', 'typical salinity']},
+            'high_salinity': {'salinity_range': (35.5, 37), 'keywords': ['high salinity', 'saline', 'salty']},
+            'very_high_salinity': {'salinity_range': (37, 42), 'keywords': ['very high salinity', 'hypersaline', 'extremely salty']}
         }
     
     def julian_to_datetime(self, julian_day):
         """Convert Julian day to readable datetime"""
         try:
-            # Argo uses days since 1950-01-01
             base_date = datetime(1950, 1, 1)
             actual_date = base_date + pd.Timedelta(days=julian_day)
             return actual_date
@@ -60,74 +59,151 @@ class ArgoProfileSummarizer:
             return None
     
     def classify_geographic_region(self, lat, lon):
-        """Classify geographic region based on coordinates, separating ocean and climate zones."""
+        """Classify geographic region with enhanced keywords"""
         climatic_zones = []
-        ocean = "Unknown Ocean"
+        ocean_keywords = []
         
         # Check latitude-based regions
         for region, info in self.regions.items():
             lat_min, lat_max = info['lat_range']
             if lat_min <= lat <= lat_max:
-                climatic_zones.append(info['description'])
+                climatic_zones.extend(info['keywords'])
         
         # Check ocean basins
         if lat < -60:
-            ocean = self.oceans['southern']['description']
+            ocean_keywords = self.oceans['southern']['keywords']
         else:
             for ocean_name, info in self.oceans.items():
                 if 'lon_range' in info:
                     for lon_min, lon_max in info['lon_range']:
                         if lon_min <= lon <= lon_max:
-                            ocean = info['description']
+                            ocean_keywords = info['keywords']
                             break
-                if ocean != "Unknown Ocean":
+                if ocean_keywords:
                     break
         
-        return {'ocean': ocean, 'climatic_zones': climatic_zones}
+        return {
+            'climatic_zones': climatic_zones,
+            'ocean_keywords': ocean_keywords
+        }
     
     def classify_water_characteristics(self, df):
-        """Classify water mass characteristics"""
-        characteristics = []
+        """Enhanced water mass classification with keywords"""
+        characteristic_keywords = []
         
         # Depth characteristics
         if 'PRES' in df.columns:
-            max_depth = df['PRES'].max()
-            min_depth = df['PRES'].min()
-            
-            for char, info in self.water_characteristics.items():
-                if 'depth_range' in info:
-                    depth_min, depth_max = info['depth_range']
-                    if min_depth <= depth_max and max_depth >= depth_min:
-                        characteristics.append(info['description'])
+            depth_data = df['PRES'].dropna()
+            if len(depth_data) > 0:
+                max_depth = depth_data.max()
+                min_depth = depth_data.min()
+                avg_depth = depth_data.mean()
+                
+                for char, info in self.water_characteristics.items():
+                    if 'depth_range' in info:
+                        depth_min, depth_max = info['depth_range']
+                        if min_depth <= depth_max and max_depth >= depth_min:
+                            characteristic_keywords.extend(info['keywords'])
         
         # Temperature characteristics
         if 'TEMP' in df.columns:
             temp_data = df['TEMP'].dropna()
             if len(temp_data) > 0:
                 avg_temp = temp_data.mean()
+                min_temp = temp_data.min()
+                max_temp = temp_data.max()
                 
                 for char, info in self.water_characteristics.items():
                     if 'temp_range' in info:
                         temp_min, temp_max = info['temp_range']
                         if temp_min <= avg_temp <= temp_max:
-                            characteristics.append(info['description'])
+                            characteristic_keywords.extend(info['keywords'])
         
         # Salinity characteristics
         if 'PSAL' in df.columns:
             sal_data = df['PSAL'].dropna()
             if len(sal_data) > 0:
                 avg_sal = sal_data.mean()
+                min_sal = sal_data.min()
+                max_sal = sal_data.max()
                 
                 for char, info in self.water_characteristics.items():
                     if 'salinity_range' in info:
                         sal_min, sal_max = info['salinity_range']
                         if sal_min <= avg_sal <= sal_max:
-                            characteristics.append(info['description'])
+                            characteristic_keywords.extend(info['keywords'])
         
-        return list(set(characteristics))  # Remove duplicates
+        return list(set(characteristic_keywords))
+    
+    def generate_extreme_tags(self, stats):
+        """Generate tags for extreme values to help with queries like 'highest salinity'"""
+        tags = []
+        
+        if 'temperature' in stats:
+            temp = stats['temperature']
+            if temp['max'] > 28:
+                tags.append("extremely high temperature")
+            elif temp['max'] > 25:
+                tags.append("high temperature")
+            if temp['min'] < 2:
+                tags.append("extremely low temperature")
+            elif temp['min'] < 5:
+                tags.append("low temperature")
+            if temp['max'] - temp['min'] > 20:
+                tags.append("large temperature gradient")
+        
+        if 'salinity' in stats:
+            sal = stats['salinity']
+            if sal['max'] > 36.5:
+                tags.append("extremely high salinity")
+            elif sal['max'] > 35.5:
+                tags.append("high salinity")
+            if sal['min'] < 33:
+                tags.append("extremely low salinity")
+            elif sal['min'] < 34:
+                tags.append("low salinity")
+            if sal['max'] - sal['min'] > 2:
+                tags.append("large salinity gradient")
+        
+        if 'depth' in stats:
+            depth = stats['depth']
+            if depth['max'] > 4000:
+                tags.append("very deep profile")
+            elif depth['max'] > 2000:
+                tags.append("deep profile")
+            elif depth['max'] < 100:
+                tags.append("shallow profile")
+        
+        return tags
+    
+    def generate_coordinate_tags(self, lat, lon):
+        """Generate coordinate-based tags for geographic queries"""
+        tags = []
+        
+        if lat is not None and lon is not None:
+            # Round coordinates for better matching
+            lat_rounded = round(lat, 1)
+            lon_rounded = round(lon, 1)
+            
+            tags.extend([
+                f"latitude {lat_rounded}",
+                f"longitude {lon_rounded}",
+                f"coordinates {lat_rounded} {lon_rounded}",
+                f"position {abs(lat_rounded)}°{'N' if lat >= 0 else 'S'} {abs(lon_rounded)}°{'E' if lon >= 0 else 'W'}"
+            ])
+            
+            # Add broader regional tags
+            lat_band = int(lat // 10) * 10
+            lon_band = int(lon // 10) * 10
+            tags.extend([
+                f"latitude band {lat_band} to {lat_band + 10}",
+                f"longitude band {lon_band} to {lon_band + 10}"
+            ])
+        
+        return tags
     
     def analyze_single_csv(self, csv_file):
-        """Analyze a single CSV file and generate summary"""
+        """Analyze a single CSV file and generate optimized summary"""
         try:
             df = pd.read_csv(csv_file)
             
@@ -153,6 +229,7 @@ class ArgoProfileSummarizer:
                     stats['depth'] = {
                         'min': pres_data.min(),
                         'max': pres_data.max(),
+                        'mean': pres_data.mean(),
                         'count': len(pres_data)
                     }
             
@@ -176,17 +253,20 @@ class ArgoProfileSummarizer:
                         'count': len(sal_data)
                     }
             
-            # Geographic and water mass classification
-            geographic_regions = []
+            # Enhanced classification
+            geographic_info = {}
             if lat is not None and lon is not None:
-                geographic_regions = self.classify_geographic_region(lat, lon)
+                geographic_info = self.classify_geographic_region(lat, lon)
             
-            water_characteristics = self.classify_water_characteristics(df)
+            water_keywords = self.classify_water_characteristics(df)
+            extreme_tags = self.generate_extreme_tags(stats)
+            coordinate_tags = self.generate_coordinate_tags(lat, lon)
             
-            # Generate human-readable summary
-            summary_text = self.generate_summary_text(
+            # Generate optimized summary
+            summary_text = self.generate_optimized_summary_text(
                 profile_id, lat, lon, measurement_date, stats, 
-                geographic_regions, water_characteristics, csv_file.name
+                geographic_info, water_keywords, extreme_tags, 
+                coordinate_tags, csv_file.name
             )
             
             return {
@@ -197,8 +277,10 @@ class ArgoProfileSummarizer:
                 'measurement_date': measurement_date.isoformat() if measurement_date else None,
                 'julian_day': julian_time,
                 'statistics': stats,
-                'geographic_regions': geographic_regions,
-                'water_characteristics': water_characteristics,
+                'geographic_keywords': geographic_info,
+                'water_characteristics': water_keywords,
+                'extreme_tags': extreme_tags,
+                'coordinate_tags': coordinate_tags,
                 'summary_text': summary_text,
                 'data_points': len(df)
             }
@@ -206,55 +288,82 @@ class ArgoProfileSummarizer:
         except Exception as e:
             return None
     
-    def generate_summary_text(self, profile_id, lat, lon, date, stats, regions, characteristics, filename):
-        """Generate a human-readable summary paragraph with emphasis on extremes and location."""
+    def generate_optimized_summary_text(self, profile_id, lat, lon, date, stats, 
+                                       geographic_info, water_keywords, extreme_tags, 
+                                       coordinate_tags, filename):
+        """Generate search-optimized summary text"""
         
-        # Start with basic info and date
-        summary = f"Profile {profile_id}"
-        if date:
-            summary += f", collected on {date.strftime('%B %d, %Y')},"
-        else:
-            summary += ","
-            
-        # Add detailed location information
+        # Start with searchable identifiers
+        summary_parts = []
+        
+        # Profile and location information (highly searchable)
         if lat is not None and lon is not None:
-            lat_dir = "N" if lat >= 0 else "S"
-            lon_dir = "E" if lon >= 0 else "W"
-            ocean = regions.get('ocean', 'an unknown ocean')
-            climatic_zones = regions.get('climatic_zones', [])
-            
-            summary += f" was recorded in the {ocean} at coordinates {abs(lat):.3f}°{lat_dir}, {abs(lon):.3f}°{lon_dir}"
-            
-            if climatic_zones:
-                summary += f", within {' and '.join(climatic_zones)}"
+            lat_str = f"{lat:.3f}"
+            lon_str = f"{lon:.3f}"
+            summary_parts.append(f"Profile {profile_id} at latitude {lat_str} longitude {lon_str}")
+            summary_parts.append(f"Location {abs(lat):.1f}°{'N' if lat >= 0 else 'S'} {abs(lon):.1f}°{'E' if lon >= 0 else 'W'}")
+        else:
+            summary_parts.append(f"Profile {profile_id}")
         
-        summary += ". "
+        # Date information
+        if date:
+            summary_parts.append(f"Measured {date.strftime('%B %Y')}")
+            summary_parts.append(f"Date {date.strftime('%Y-%m-%d')}")
         
-        # Add depth information with emphasis on min/max
-        if 'depth' in stats:
-            depth_stats = stats['depth']
-            summary += (f"The profile contains {depth_stats['count']} measurements, spanning from a minimum depth "
-                        f"of {depth_stats['min']:.1f}m to a maximum of {depth_stats['max']:.1f}m. ")
+        # Geographic and oceanographic context
+        if geographic_info:
+            if 'ocean_keywords' in geographic_info:
+                summary_parts.extend(geographic_info['ocean_keywords'])
+            if 'climatic_zones' in geographic_info:
+                summary_parts.extend(geographic_info['climatic_zones'])
         
-        # Add water characteristics
-        if characteristics:
-            summary += f"The water column includes characteristics of {', '.join(characteristics[:3])}. "
+        # Water characteristics
+        summary_parts.extend(water_keywords)
         
-        # Add temperature information with emphasis on min/max
+        # Statistical information (key for range queries)
         if 'temperature' in stats:
-            temp_stats = stats['temperature']
-            summary += (f"A significant temperature gradient was observed, with a maximum of {temp_stats['max']:.2f}°C "
-                        f"and a minimum of {temp_stats['min']:.2f}°C (average: {temp_stats['mean']:.2f}°C). ")
+            temp = stats['temperature']
+            summary_parts.extend([
+                f"Temperature range {temp['min']:.1f} to {temp['max']:.1f} degrees Celsius",
+                f"Average temperature {temp['mean']:.1f}°C",
+                f"Minimum temperature {temp['min']:.1f}°C",
+                f"Maximum temperature {temp['max']:.1f}°C"
+            ])
         
-        # Add salinity information with emphasis on min/max
         if 'salinity' in stats:
-            sal_stats = stats['salinity']
-            summary += (f"Salinity extremes were recorded between a minimum of {sal_stats['min']:.2f} PSU and a "
-                        f"maximum of {sal_stats['max']:.2f} PSU (average: {sal_stats['mean']:.2f} PSU). ")
+            sal = stats['salinity']
+            summary_parts.extend([
+                f"Salinity range {sal['min']:.2f} to {sal['max']:.2f} PSU",
+                f"Average salinity {sal['mean']:.2f} PSU",
+                f"Minimum salinity {sal['min']:.2f} PSU",
+                f"Maximum salinity {sal['max']:.2f} PSU"
+            ])
         
-        summary += f"Data source: {filename}."
+        if 'depth' in stats:
+            depth = stats['depth']
+            summary_parts.extend([
+                f"Depth range {depth['min']:.0f} to {depth['max']:.0f} meters",
+                f"Maximum depth {depth['max']:.0f}m",
+                f"Minimum depth {depth['min']:.0f}m",
+                f"{depth['count']} depth measurements"
+            ])
         
-        return summary
+        # Extreme value tags for superlative queries
+        summary_parts.extend(extreme_tags)
+        
+        # Coordinate tags for geographic queries
+        summary_parts.extend(coordinate_tags)
+        
+        # Additional searchable metadata
+        summary_parts.extend([
+            f"Data file {filename}",
+            f"Argo float profile",
+            "Oceanographic data",
+            "CTD measurements"
+        ])
+        
+        # Join with periods and spaces for better tokenization
+        return ". ".join(summary_parts) + "."
     
     def process_all_csvs(self):
         """Process all CSV files in the folder"""
@@ -288,6 +397,37 @@ class ArgoProfileSummarizer:
             json.dump(self.summaries, f, indent=2, default=str)
         
         print(f"Summaries saved to {output_file}")
+    
+    def generate_search_index(self, output_file="argo_search_terms.json"):
+        """Generate a search term index for debugging embedding performance"""
+        search_terms = {
+            'coordinate_patterns': [],
+            'temperature_patterns': [],
+            'salinity_patterns': [],
+            'depth_patterns': [],
+            'geographic_terms': [],
+            'extreme_value_terms': []
+        }
+        
+        for summary in self.summaries:
+            if 'coordinate_tags' in summary:
+                search_terms['coordinate_patterns'].extend(summary['coordinate_tags'])
+            if 'extreme_tags' in summary:
+                search_terms['extreme_value_terms'].extend(summary['extreme_tags'])
+            if 'geographic_keywords' in summary:
+                if 'ocean_keywords' in summary['geographic_keywords']:
+                    search_terms['geographic_terms'].extend(summary['geographic_keywords']['ocean_keywords'])
+                if 'climatic_zones' in summary['geographic_keywords']:
+                    search_terms['geographic_terms'].extend(summary['geographic_keywords']['climatic_zones'])
+        
+        # Remove duplicates
+        for key in search_terms:
+            search_terms[key] = list(set(search_terms[key]))
+        
+        with open(output_file, 'w') as f:
+            json.dump(search_terms, f, indent=2)
+        
+        print(f"Search term index saved to {output_file}")
 
 # Main execution
 if __name__ == "__main__":
@@ -300,6 +440,12 @@ if __name__ == "__main__":
     if processed > 0:
         # Save summaries
         summarizer.save_summaries("argo_summaries.json")
+        summarizer.generate_search_index("argo_search_terms.json")
         print(f"Successfully processed {processed} profiles")
+        
+        # Print example of optimized summary
+        if summarizer.summaries:
+            print("\nExample optimized summary:")
+            print(summarizer.summaries[0]['summary_text'][:500] + "...")
     else:
         print("No profiles were processed successfully")

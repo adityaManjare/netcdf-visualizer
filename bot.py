@@ -140,61 +140,93 @@ def plot_ocean_profile(csv_filename: str) -> str:
 
 def enrich_query_to_summary_format(client, user_query: str, model_name: str) -> str:
     """
-    Enriches the user query to match the exact format of stored summaries.
-    This dramatically improves vector search accuracy.
+    Enriches the user query to match the NEW optimized summary format.
+    This dramatically improves vector search accuracy by matching the exact terminology and structure.
     """
-    enrichment_prompt = f"""Transform this ocean search query to match the database summary format.
+    enrichment_prompt = f"""Transform this ocean search query to match the NEW database summary format for better vector search.
 
-Database summaries follow this pattern:
-"recorded in [Ocean] at coordinates [lat]°[N/S], [lon]°[E/W], within [climatic zone] waters. contains measurements, spanning minimum depth [X]m maximum [Y]m. water column characteristics [types]. temperature gradient maximum [max]°C minimum [min]°C average. salinity extremes minimum [min] PSU maximum [max] PSU average."
+The NEW database summaries follow this search-optimized pattern:
+"Profile [ID] at latitude [X.XXX] longitude [Y.YYY]. Location [X.X]°[N/S] [Y.Y]°[E/W]. Measured [Month Year]. [Ocean Name]. [climatic zones]. Temperature range [min] to [max] degrees Celsius. Average temperature [avg]°C. Maximum temperature [max]°C. Minimum temperature [min]°C. Salinity range [min] to [max] PSU. Average salinity [avg] PSU. Maximum salinity [max] PSU. Minimum salinity [min] PSU. Depth range [min] to [max] meters. Maximum depth [max]m. [extreme tags]. [coordinate tags]. Argo float profile. Oceanographic data. CTD measurements."
+
+KEY TERMS TO INCLUDE:
+- Coordinates: "latitude [number]", "longitude [number]", "coordinates", "position"
+- Oceans: "Pacific Ocean", "Atlantic Ocean", "Indian Ocean", "Southern Ocean", "Arctic"
+- Climatic zones: "tropical", "subtropical", "polar", "equatorial", "temperate"
+- Temperature: "temperature range", "maximum temperature", "minimum temperature", "degrees Celsius", "°C"
+- Salinity: "salinity range", "maximum salinity", "minimum salinity", "PSU"
+- Depth: "depth range", "maximum depth", "minimum depth", "meters"
+- Water types: "warm water", "cold water", "deep water", "surface water"
+- Extreme tags: "high temperature", "low temperature", "high salinity", "low salinity", "very deep profile"
+- Standard terms: "Argo float profile", "oceanographic data", "CTD measurements"
 
 Query: "{user_query}"
 
-OUTPUT ONLY THE ENRICHED QUERY - NO EXPLANATIONS!
+TRANSFORMATION RULES:
+1. Add specific coordinate terms if location mentioned
+2. Include ocean basin names
+3. Add temperature/salinity range terminology
+4. Include depth-related terms
+5. Add water characteristic descriptors
+6. Include standard oceanographic terms
+7. Match the exact phrasing used in summaries
 
-Rules:
-- Add ocean region (Indian Ocean, Pacific, Atlantic, Southern Ocean, Arctic)
-- Add climatic zones (tropical waters, polar waters, subtropical, equatorial)
-- Add relevant terms: recorded, coordinates, temperature extremes, salinity PSU, depth measurements, water column, characteristics
-- Keep it concise and natural
+EXAMPLES:
+"data near 25.5 degrees latitude" → "latitude 25.5 coordinates position tropical temperature range salinity range depth range oceanographic data CTD measurements"
 
-Examples:
-"Southern Ocean data" → "recorded in Southern Ocean polar waters temperature extremes salinity PSU depth measurements characteristics"
-"tropical profiles" → "tropical waters warm water characteristics temperature maximum salinity measurements"
-"Indian region 5 degrees latitude" → "recorded in Indian Ocean tropical waters coordinates equatorial characteristics temperature salinity"
+"show me warm water profiles" → "warm water high temperature tropical temperature range maximum temperature degrees Celsius oceanographic data Argo float profile"
 
-Transform now (OUTPUT ONLY THE QUERY):"""
+"Southern Ocean data" → "Southern Ocean polar cold water low temperature temperature range salinity range depth range antarctic oceanographic data CTD measurements"
+
+"salinity data around 100 longitude" → "longitude 100 coordinates salinity range maximum salinity minimum salinity PSU oceanographic data CTD measurements"
+
+"deep water measurements" → "deep water maximum depth depth range meters abyssal very deep profile oceanographic data CTD measurements"
+
+"Pacific tropical profiles" → "Pacific Ocean tropical warm water temperature range high temperature salinity range oceanographic data Argo float profile"
+
+OUTPUT ONLY THE ENRICHED QUERY (no explanations, quotes, or prefixes):"""
 
     try:
         response = client.chat.completions.create(
             messages=[{"role": "user", "content": enrichment_prompt}],
             model=model_name,
-            max_tokens=300,
-            temperature=0.3
+            max_tokens=400,
+            temperature=0.2  # Lower temperature for more consistent output
         )
         
         enriched = response.choices[0].message.content.strip()
         
-        # Clean up the response - remove explanations
-        if '\n' in enriched:
-            # Take only the first line if multiple lines
-            enriched = enriched.split('\n')[0].strip()
+        # Enhanced cleaning - remove any explanatory text
+        lines = enriched.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line and not any(prefix in line.lower() for prefix in [
+                'here', 'the enriched', 'transformed', 'output', 'result', 
+                'query:', 'enriched:', 'answer:', 'response:'
+            ]):
+                enriched = line
+                break
         
-        # Remove common prefix patterns
+        # Remove common prefixes and suffixes
         prefixes_to_remove = [
-            "Output:", "Query:", "Enriched:", "Transformed:", 
-            "Here's the enriched query:", "The enriched query is:"
+            "Output:", "Query:", "Enriched:", "Transformed:", "Result:",
+            "Here's the enriched query:", "The enriched query is:",
+            "Enriched query:", "Final query:"
         ]
         for prefix in prefixes_to_remove:
             if enriched.lower().startswith(prefix.lower()):
                 enriched = enriched[len(prefix):].strip()
         
-        # Remove quotes if present
-        enriched = enriched.strip('"').strip("'")
+        # Remove quotes and extra punctuation
+        enriched = enriched.strip('"').strip("'").strip('`')
+        
+        # Ensure it doesn't exceed reasonable length (vector models have limits)
+        words = enriched.split()
+        if len(words) > 50:  # Reasonable limit for search queries
+            enriched = ' '.join(words[:50])
         
         print(f"🔍 Query enrichment:", file=sys.stderr)
         print(f"   Original: '{user_query}'", file=sys.stderr)
-        print(f"   Enriched: '{enriched}'", file=sys.stderr)
+        print(f"   Enriched: '{enriched[:100]}{'...' if len(enriched) > 100 else ''}'", file=sys.stderr)
         return enriched
         
     except Exception as e:
@@ -203,65 +235,87 @@ Transform now (OUTPUT ONLY THE QUERY):"""
 
 def ask_clarifying_questions(client, user_query: str, model_name: str) -> dict:
     """
+    Updated clarifying questions function for the new summary format.
     Analyzes query completeness and asks clarifying questions if too vague.
-    Returns dict with 'needs_clarification' boolean and 'questions' or 'enriched_query'.
     """
-    analysis_prompt = f"""Analyze this ocean profile search query: "{user_query}"
+    analysis_prompt = f"""Analyze this ocean profile search query for completeness: "{user_query}"
 
-The database summaries contain:
-- Ocean regions (Southern Ocean, Pacific, Atlantic, Indian, Arctic)
-- Precise coordinates (latitude/longitude)
-- Climatic zones (southern polar, tropical, subtropical, equatorial)
-- Temperature extremes (min/max/average in °C)
-- Salinity extremes (min/max/average in PSU)
+The NEW database summaries contain these searchable elements:
+- Exact coordinates (latitude/longitude with 3 decimal precision)
+- Ocean basins (Pacific Ocean, Atlantic Ocean, Indian Ocean, Southern Ocean, Arctic)
+- Climatic zones (tropical, subtropical, polar, equatorial, temperate, antarctic)
+- Temperature ranges (minimum, maximum, average in °C)
+- Salinity ranges (minimum, maximum, average in PSU) 
 - Depth ranges (minimum to maximum in meters)
-- Water characteristics (cold water, warm water, deep waters, surface waters)
+- Water characteristics (warm water, cold water, deep water, surface water)
+- Extreme conditions (high temperature, low salinity, very deep profile, etc.)
+- Time periods (month/year of measurement)
 
 Determine if the query is:
-1. SPECIFIC ENOUGH - has clear search criteria (coordinates, ocean region, specific conditions)
+1. SPECIFIC ENOUGH - has clear search criteria that can match database terms
 2. TOO VAGUE - needs clarification to get meaningful results
 
+SPECIFIC ENOUGH examples:
+- "Pacific Ocean data" (has ocean basin)
+- "latitude 25.5" (has coordinate)  
+- "warm water profiles" (has water characteristic)
+- "high salinity measurements" (has specific condition)
+- "Southern Ocean polar" (has ocean + climatic zone)
+
+TOO VAGUE examples:
+- "ocean data" (no specific criteria)
+- "temperature information" (no location or range)
+- "show me profiles" (no search criteria)
+
 If SPECIFIC ENOUGH, respond with JSON:
-{{"needs_clarification": false, "reasoning": "brief reason"}}
+{{"needs_clarification": false, "reasoning": "brief reason why it's specific enough"}}
 
 If TOO VAGUE, respond with JSON:
-{{"needs_clarification": true, "questions": ["question 1", "question 2"]}}
+{{"needs_clarification": true, "questions": ["specific question 1", "specific question 2"]}}
 
-Ask 1-2 brief questions about the MOST important missing information.
+Ask 1-2 brief questions about the MOST important missing search criteria.
 
-Examples:
-- "ocean data" → TOO VAGUE (needs region, conditions, or coordinates)
-- "Southern Ocean profiles" → SPECIFIC ENOUGH (has ocean region)
-- "temperature data" → TOO VAGUE (needs location)
-- "data at 60°S" → SPECIFIC ENOUGH (has coordinates)
+Query to analyze: "{user_query}"
 
-Analyze: "{user_query}"
-"""
+Respond with JSON only:"""
 
     try:
         response = client.chat.completions.create(
             messages=[{"role": "user", "content": analysis_prompt}],
             model=model_name,
-            max_tokens=250,
+            max_tokens=300,
             temperature=0.3
         )
         
         result_text = response.choices[0].message.content.strip()
         
-        # Extract JSON from response
-        json_match = result_text
+        # Extract JSON more reliably
         if "```json" in result_text:
-            json_match = result_text.split("```json")[1].split("```")[0].strip()
+            json_part = result_text.split("```json")[1].split("```")[0].strip()
         elif "```" in result_text:
-            json_match = result_text.split("```")[1].split("```")[0].strip()
+            json_part = result_text.split("```")[1].split("```")[0].strip()
+        else:
+            # Try to find JSON-like structure
+            json_part = result_text
+            if '{' in json_part and '}' in json_part:
+                start = json_part.find('{')
+                end = json_part.rfind('}') + 1
+                json_part = json_part[start:end]
         
-        result = json.loads(json_match)
+        result = json.loads(json_part)
+        
+        # Validate the structure
+        if "needs_clarification" not in result:
+            return {"needs_clarification": False, "reasoning": "parsing failed"}
+        
         return result
         
+    except (json.JSONDecodeError, KeyError, IndexError) as e:
+        print(f"⚠️  Query analysis JSON parsing failed: {e}, proceeding without clarification", file=sys.stderr)
+        return {"needs_clarification": False, "reasoning": "analysis parsing failed"}
     except Exception as e:
         print(f"⚠️  Query analysis failed: {e}, proceeding without clarification", file=sys.stderr)
         return {"needs_clarification": False, "reasoning": "analysis failed"}
-
 # --- MODIFIED: Added the new plot_ocean_profile tool ---
 TOOLS = [
     {
