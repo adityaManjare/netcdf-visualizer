@@ -1,0 +1,7 @@
+parquets
+argo_summaries.json
+chroma_db
+floatchat_venv
+netcdf_data
+.env
+__pycache__/
